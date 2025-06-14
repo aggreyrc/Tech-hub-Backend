@@ -9,7 +9,7 @@ from flask_restful import Resource,Api
 from flask_cors import CORS
 
 
-from models import db, User, bcrypt, mail
+from models import db, User, bcrypt, mail, Product, Order, Cart
 import os
 
 app = Flask(__name__)

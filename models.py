@@ -36,3 +36,43 @@ class User(db.Model, SerializerMixin):
     
     def __repr__(self):
         return f'<User {self.username}>'
+    
+# Product model
+class Product(db.Model, SerializerMixin):
+    __tablename__ = 'products'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    price = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Product {self.name}>'
+# Order model
+class Order(db.Model, SerializerMixin):
+    __tablename__ = 'orders'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='orders')
+    product = db.relationship('Product', backref='orders')
+
+    def __repr__(self):
+        return f'<Order {self.id} by User {self.user_id}>'
+# Cart model
+class Cart(db.Model, SerializerMixin):
+    __tablename__ = 'carts'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='carts')
+    product = db.relationship('Product', backref='carts')
+
+    def __repr__(self):
+        return f'<Cart {self.id} for User {self.user_id}>'
