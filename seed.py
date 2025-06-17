@@ -9,9 +9,9 @@ def create_db():
 
         # Create users
         users = [
-            User(username='aggreyrc', email='admin@example.com', password='admin123'),
-            User(username='johndoe', email='john@example.com', password='johnpass'),
-            User(username='janedoe', email='jane@example.com', password='janepass'),
+            User(username='aggreyrc', email='admin@example.com', password='admin123', is_admin=True),
+            User(username='johndoe', email='john@example.com', password='johnpass', is_admin=False),
+            User(username='janedoe', email='jane@example.com', password='janepass', is_admin=False),
         ]
         for user in users:
             user.set_password(user.password)
@@ -41,6 +41,7 @@ def create_db():
                 db.session.rollback()
                 print(f"Product {product.name} already exists.")
         print("Database created and sample users/products added.")
+        
         
 if __name__ == '__main__':
     create_db()

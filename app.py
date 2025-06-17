@@ -7,9 +7,10 @@ from flask import request, make_response, session, Flask,jsonify
 from flask_migrate import Migrate
 from flask_restful import Resource,Api
 from flask_cors import CORS
+from functools import wraps
 
 
-from models import db, User, bcrypt, mail, Product, Order, Cart
+from models import db, User, bcrypt, mail, Product, Order, Cart, Payment
 import os
 
 app = Flask(__name__)
@@ -22,6 +23,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.json.compact = False
+
+app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 migrate = Migrate(app, db)
 db.init_app(app)
@@ -344,6 +349,89 @@ class CartDelete(Resource):
         return make_response(jsonify({'message': 'Cart deleted successfully.'}), 200)
 api.add_resource(CartDelete, '/carts/<int:cart_id>/delete')
 
+
+
+# --- Authentication & Session Management Utilities ---
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_id = session.get('user_id')
+        if not user_id:
+            return make_response(jsonify({'error': 'Authentication required.'}), 401)
+        user = db.session.get(User, user_id)
+        if not user:
+            session.pop('user_id', None)
+            return make_response(jsonify({'error': 'Invalid session.'}), 401)
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_id = session.get('user_id')
+        if not user_id:
+            return make_response(jsonify({'error': 'Authentication required.'}), 401)
+        user = db.session.get(User, user_id)
+        if not user or not getattr(user, 'is_admin', False):
+            return make_response(jsonify({'error': 'Admin privileges required.'}), 403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+# --- Authentication Endpoints ---
+
+class Login(Resource):
+    def post(self):
+        data = request.get_json()
+        if not data or not data.get('email') or not data.get('password'):
+            return make_response(jsonify({'error': 'Email and password are required.'}), 400)
+        user = User.query.filter_by(email=data['email']).first()
+        if not user or not user.check_password(data['password']):
+            return make_response(jsonify({'error': 'Invalid email or password.'}), 401)
+        session['user_id'] = user.id
+        resp = make_response(jsonify({'message': 'Login successful.', 'user': user.to_dict()}), 200)
+        resp.set_cookie('session', session.sid if hasattr(session, 'sid') else '', httponly=True, samesite='Lax')
+        return resp
+
+class Logout(Resource):
+    @login_required
+    def post(self):
+        session.pop('user_id', None)
+        resp = make_response(jsonify({'message': 'Logout successful.'}), 200)
+        resp.delete_cookie('session')
+        return resp
+
+class CheckSession(Resource):
+    def get(self):
+        user_id = session.get('user_id')
+        if not user_id:
+            return make_response(jsonify({'authenticated': False}), 200)
+        user = db.session.get(User, user_id)
+        if not user:
+            session.pop('user_id', None)
+            return make_response(jsonify({'authenticated': False}), 200)
+        return make_response(jsonify({'authenticated': True, 'user': user.to_dict()}), 200)
+
+# Example of a protected route
+class ProtectedUserProfile(Resource):
+    @login_required
+    def get(self):
+        user_id = session.get('user_id')
+        user = db.session.get(User, user_id)
+        return make_response(jsonify({'user': user.to_dict()}), 200)
+
+# Example of an admin-only route
+class AdminDashboard(Resource):
+    @admin_required
+    def get(self):
+        return make_response(jsonify({'message': 'Welcome, admin!'}), 200)
+
+# --- Register new endpoints ---
+api.add_resource(Login, '/login')
+api.add_resource(Logout, '/logout')
+api.add_resource(CheckSession, '/check-session')
+api.add_resource(ProtectedUserProfile, '/profile')
+api.add_resource(AdminDashboard, '/admin/dashboard')
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)

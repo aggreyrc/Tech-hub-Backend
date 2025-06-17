@@ -23,6 +23,7 @@ class User(db.Model, SerializerMixin):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(128), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_admin = db.Column(db.Boolean, default=False)
 
     def set_password(self, password):
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
@@ -77,3 +78,19 @@ class Cart(db.Model, SerializerMixin):
 
     def __repr__(self):
         return f'<Cart {self.id} for User {self.user_id}>'
+    
+# Payment model
+class Payment(db.Model):
+    __tablename__ = 'payments'
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    payment_method = db.Column(db.String(50), nullable=False)  # e.g., 'stripe', 'paypal'
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, completed, failed
+    transaction_id = db.Column(db.String(100), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    order = db.relationship('Order', backref='payment')
+
+    def __repr__(self):
+        return f'<Payment {self.id} for Order {self.order_id}>'
