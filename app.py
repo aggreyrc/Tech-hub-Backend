@@ -10,10 +10,15 @@ from flask_cors import CORS
 from functools import wraps
 
 
-from models import db, User, bcrypt, mail, Product, Order, Cart, Payment
+from models import db, User, bcrypt, mail, Product, Order, Cart, Payment, send_verification_email
 import os
+import requests
 
 app = Flask(__name__)
+
+# Paystack secret key from environment variable
+PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY')
+PAYSTACK_BASE_URL = 'https://api.paystack.co'
 
 # Configure upload folder
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -425,6 +430,37 @@ class AdminDashboard(Resource):
     @admin_required
     def get(self):
         return make_response(jsonify({'message': 'Welcome, admin!'}), 200)
+    
+
+# Signup endpoint
+class Signup(Resource):
+    def post(self):
+        data = request.get_json()
+        if not data or not data.get('username') or not data.get('email') or not data.get('password'):
+            return make_response(jsonify({'error': 'Username, email, and password are required.'}), 400)
+        
+        # Check if user already exists
+        existing_user = User.query.filter_by(email=data['email']).first()
+        if existing_user:
+            return make_response(jsonify({'error': 'User with this email already exists.'}), 400)
+        
+        
+        user = User(username=data['username'], email=data['email'])
+        user.set_password(data['password'])
+        
+        # Generate verification token
+        user.generate_verification_token()
+        send_verification_email(user.email, user.verification_token)
+
+        db.session.add(user)
+        db.session.commit()
+        
+        session ['user_id'] = user.id
+        
+        new_user = user.to_dict()
+        
+        
+        return make_response(jsonify({'message': 'User created successfully. Please verify your email.', 'user': new_user}), 201)
 
 # --- Register new endpoints ---
 api.add_resource(Login, '/login')
@@ -432,6 +468,51 @@ api.add_resource(Logout, '/logout')
 api.add_resource(CheckSession, '/check-session')
 api.add_resource(ProtectedUserProfile, '/profile')
 api.add_resource(AdminDashboard, '/admin/dashboard')
+api.add_resource(Signup, '/signup')
+# --- Paystack Payment Integration ---
+class PaystackInitialize(Resource):
+    def post(self):
+        data = request.get_json()
+        email = data.get('email')
+        amount = data.get('amount')
+        if not email or not amount:
+            return make_response(jsonify({'error': 'Email and amount are required.'}), 400)
+        try:
+            amount_kobo = int(float(amount) * 100)  # Paystack expects amount in kobo
+        except Exception:
+            return make_response(jsonify({'error': 'Invalid amount.'}), 400)
+        headers = {
+            'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}',
+            'Content-Type': 'application/json',
+        }
+        payload = {
+            'email': email,
+            'amount': amount_kobo,
+        }
+        response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=payload, headers=headers)
+        resp_json = response.json()
+        if not resp_json.get('status'):
+            return make_response(jsonify({'error': resp_json.get('message', 'Paystack error')}), 400)
+        return make_response(jsonify({'authorization_url': resp_json['data']['authorization_url'], 'reference': resp_json['data']['reference']}), 200)
+
+class PaystackCallback(Resource):
+    def get(self):
+        reference = request.args.get('reference')
+        if not reference:
+            return make_response(jsonify({'error': 'Reference is required.'}), 400)
+        headers = {
+            'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}',
+        }
+        response = requests.get(f'{PAYSTACK_BASE_URL}/transaction/verify/{reference}', headers=headers)
+        resp_json = response.json()
+        if not resp_json.get('status'):
+            return make_response(jsonify({'error': resp_json.get('message', 'Verification failed')}), 400)
+        # Here you can update your Payment model, mark order as paid, etc.
+        return make_response(jsonify({'message': 'Payment verified successfully.', 'data': resp_json['data']}), 200)
+
+api.add_resource(PaystackInitialize, '/paystack/initialize')
+api.add_resource(PaystackCallback, '/paystack/callback')
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
