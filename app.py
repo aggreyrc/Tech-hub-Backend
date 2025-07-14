@@ -462,6 +462,24 @@ class Signup(Resource):
         
         return make_response(jsonify({'message': 'User created successfully. Please verify your email.', 'user': new_user}), 201)
 
+# Code verification endpoint
+class VerifyEmail(Resource):
+    def post(self):
+        data = request.get_json()
+        if not data or not data.get('token'):
+            return make_response(jsonify({'error': 'Verification token is required.'}), 400)
+        
+        user = User.query.filter_by(verification_token=data['token']).first()
+        if not user:
+            return make_response(jsonify({'error': 'Invalid verification token.'}), 400)
+        
+        user.is_verified = True
+        user.verification_token = None
+        db.session.commit()
+        
+        return make_response(jsonify({'message': 'Email verified successfully.', 'user': user.to_dict()}), 200)
+    
+
 # --- Register new endpoints ---
 api.add_resource(Login, '/login')
 api.add_resource(Logout, '/logout')
@@ -469,6 +487,9 @@ api.add_resource(CheckSession, '/check-session')
 api.add_resource(ProtectedUserProfile, '/profile')
 api.add_resource(AdminDashboard, '/admin/dashboard')
 api.add_resource(Signup, '/signup')
+api.add_resource(VerifyEmail, '/verify-email')
+
+
 # --- Paystack Payment Integration ---
 class PaystackInitialize(Resource):
     def post(self):
