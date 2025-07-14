@@ -38,7 +38,7 @@ db.init_app(app)
 
 bcrypt.init_app(app)
 mail.init_app(app)
-CORS(app)
+CORS(app, supports_credentials=True, origins=["http://localhost:8080"])
 api = Api(app)
 
 # Home
