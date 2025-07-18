@@ -38,7 +38,7 @@ db.init_app(app)
 
 bcrypt.init_app(app)
 mail.init_app(app)
-CORS(app, supports_credentials=True, origins=["http://localhost:8080"])
+CORS(app, supports_credentials=True, origins=["http://localhost:8080", "https://techhub-wheat.vercel.app"])
 api = Api(app)
 
 # Home
